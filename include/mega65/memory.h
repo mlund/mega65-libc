@@ -88,7 +88,7 @@ lpeek(uint32_t address);
  */
 inline uint8_t lpeek_i(const uint32_t ADDRESS)
 {
-    // Helper to (dis)assemble 32-bit int; optimizes out fully
+    // Zero-cost helper to split 32-bit integer
     const union {
         uint32_t value;
         uint8_t byte[4];
@@ -100,10 +100,9 @@ inline uint8_t lpeek_i(const uint32_t ADDRESS)
         "ldz #%4        \n" // complete Q=AXYZ register
         "stq __rc2      \n" // Q -> rc2-5
         "ldz #0         \n"
-        "lda [__rc2], z \n"
-        : "=a"(value)
-        : "a"(adr.byte[0]), "x"(adr.byte[1]), "y"(adr.byte[2]), "i"(adr.byte[3])
-        : "rc2", "rc3", "rc4", "rc5", "p");
+        "lda [__rc2], z \n" : "=a"(value) : "a"(adr.byte[0]),
+        "x"(adr.byte[1]), "y"(adr.byte[2]), "i"(adr.byte[3]) : "rc2", "rc3",
+        "rc4", "rc5", "p");
 
     return value;
 }
@@ -125,9 +124,25 @@ uint8_t dma_peek(uint32_t address);
  * @param value Single byte to write to the given address
  */
 #ifdef __clang__
-__attribute__((leaf))
-#endif
+inline void lpoke(const uint32_t address, const uint8_t value)
+{
+    // Zero-cost helper to split 32-bit integer;
+    const union {
+        uint32_t value;
+        struct {
+            uint8_t bytes[4];
+        };
+    } in = { address };
+
+    // Inline asm allows for aggressive register optimization at compile time
+    __attribute__((leaf)) __asm__ volatile("ldz 0       \n"
+                                           "sta [%1], z \n" : : "a"(value),
+        "r"(in.bytes[0]), "r"(in.bytes[1]), "r"(in.bytes[2]),
+        "r"(in.bytes[3]) : "p");
+}
+#else
 void lpoke(uint32_t address, uint8_t value);
+#endif
 
 /**
  * @brief Poke a byte to the given address using DMA copy
