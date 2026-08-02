@@ -8,6 +8,26 @@ struct dmagic_dmalist dmalist;
 uint8_t dma_byte;
 #endif
 
+#ifdef __clang__
+inline void lpoke(const uint32_t address, const uint8_t value)
+{
+    // Zero-cost helper to split 32-bit integer;
+    union {
+        uint32_t value;
+        struct {
+            uint8_t bytes[4];
+        };
+        uint16_t hej;
+    } in = { address };
+
+    // Inline asm allows for aggressive register optimization
+    __attribute__((leaf)) __asm__ volatile("ldz #0      \n"
+                                           "sta [%1], z \n" : : "a"(value),
+        "r"(in.hej), "r"(in.bytes[1]), "r"(in.bytes[2]),
+        "r"(in.bytes[3]) : "p", "%1", "%2", "%3", "%4");
+}
+#endif
+
 /**
  * @brief Perform DMA operation
  */
@@ -107,8 +127,7 @@ void dma_poke(uint32_t address, uint8_t value)
     return;
 }
 
-void lcopy(
-    uint32_t source_address, uint32_t destination_address, size_t count)
+void lcopy(uint32_t source_address, uint32_t destination_address, size_t count)
 {
     dmalist.option_0b = 0x0b;
     dmalist.option_80 = 0x80;

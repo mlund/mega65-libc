@@ -124,25 +124,9 @@ uint8_t dma_peek(uint32_t address);
  * @param value Single byte to write to the given address
  */
 #ifdef __clang__
-inline void lpoke(const uint32_t address, const uint8_t value)
-{
-    // Zero-cost helper to split 32-bit integer;
-    const union {
-        uint32_t value;
-        struct {
-            uint8_t bytes[4];
-        };
-    } in = { address };
-
-    // Inline asm allows for aggressive register optimization at compile time
-    __attribute__((leaf)) __asm__ volatile("ldz 0       \n"
-                                           "sta [%1], z \n" : : "a"(value),
-        "r"(in.bytes[0]), "r"(in.bytes[1]), "r"(in.bytes[2]),
-        "r"(in.bytes[3]) : "p");
-}
-#else
-void lpoke(uint32_t address, uint8_t value);
+__attribute__((leaf))
 #endif
+void lpoke(uint32_t address, uint8_t value);
 
 /**
  * @brief Poke a byte to the given address using DMA copy

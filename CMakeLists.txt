@@ -27,7 +27,6 @@ set(CLANG_WARNINGS
     -Wimplicit-fallthrough # warn on statements that fallthrough without an explicit annotation
     -Wpedantic # warn if non-standard C/C++ is used
     -Wno-c23-extensions
-    -Wno-fixed-enum-extension
     -Wno-language-extension-token
 )
 
