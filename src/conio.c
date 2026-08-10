@@ -38,6 +38,7 @@
 // See ESCAPE_HASH() for how to generate.
 //
 typedef struct tagESCAPE_CODE {
+    unsigned char hash;
     unsigned char arg;
     void (*fn)(unsigned char);
 } ESCAPE_CODE;
@@ -46,7 +47,6 @@ typedef struct tagESCAPE_CODE {
 // in order to save bank 0 memory
 static char* p2sbuf = (char*)0x334;
 
-static ESCAPE_CODE escapeCode[255];
 static unsigned char g_curTextColor = COLOUR_WHITE;
 static unsigned char g_curX = 0;
 static unsigned char g_curY = 0;
@@ -94,13 +94,47 @@ static void gohome_(unsigned char ignored __attribute__((unused)))
     gohome();
 } // Callable from Escape Code table
 
-static void escNOP(unsigned char ignored __attribute__((unused)))
-{ /* do nothing */
-}
+// Escape codes and their hashed strings.  We know that for those codes and
+// with k=277 there are no collisions.  Adding new codes should verify no
+// collisions are added by changing k or by using another algorithm.
+//
+// Held as a sorted list rather than indexed by the hash: const so it stays
+// in ROM, and 28 entries rather than 255 slots.  Filling a table in at run
+// time made it writable data, which the linker keeps even for a program
+// that never prints an escape code.
+static const ESCAPE_CODE escapeCode[] = {
+    { 1, 0, moveleft },
+    { 7, 0, moveright },
+    { 10, 0, moveup },
+    { 22, 0, clrscr_ },
+    { 30, 0, gohome_ },
+    { 49, 0, underline },
+    { 57, COLOUR_GREY1, textcolor },
+    { 58, COLOUR_GREY2, textcolor },
+    { 59, COLOUR_GREY3, textcolor },
+    { 64, COLOUR_CYAN, textcolor },
+    { 68, COLOUR_LIGHTBLUE, textcolor },
+    { 72, COLOUR_LIGHTGREEN, textcolor },
+    { 96, 1, blink },
+    { 139, 0, revers },
+    { 140, COLOUR_PURPLE, textcolor },
+    { 147, 1, underline },
+    { 151, COLOUR_BROWN, textcolor },
+    { 158, 0, blink },
+    { 168, COLOUR_WHITE, textcolor },
+    { 173, 1, revers },
+    { 191, COLOUR_YELLOW, textcolor },
+    { 199, COLOUR_PINK, textcolor },
+    { 206, COLOUR_BLACK, textcolor },
+    { 215, COLOUR_ORANGE, textcolor },
+    { 216, COLOUR_BLUE, textcolor },
+    { 220, COLOUR_GREEN, textcolor },
+    { 240, COLOUR_RED, textcolor },
+    { 249, 0, movedown },
+};
 
 void conioinit(void)
 {
-    register unsigned char i = 0;
 
     // Make sure we go to VIC-IV IO mode
 
@@ -114,64 +148,6 @@ void conioinit(void)
     g_curScreenH = IS_V400 ? 50 : 25;
 
     flushkeybuf();
-
-    for (i = 0; i < sizeof(escapeCode) / sizeof(escapeCode[0]); ++i) {
-        escapeCode[i].fn = escNOP;
-        escapeCode[i].arg = 0x0;
-    }
-
-    // Setup escape codes according to it's hashed strings.
-    // We know that for those codes and with k=277 there are no collisions.
-    // Adding new codes should verify no collisions are added by changing k
-    // or by using another algorithm.
-
-    escapeCode[1].fn = moveleft;
-    escapeCode[7].fn = moveright;
-    escapeCode[10].fn = moveup;
-    escapeCode[22].fn = clrscr_;
-    escapeCode[30].fn = gohome_;
-    escapeCode[49].fn = underline;
-    escapeCode[57].fn = textcolor;
-    escapeCode[57].arg = COLOUR_GREY1;
-    escapeCode[58].fn = textcolor;
-    escapeCode[58].arg = COLOUR_GREY2;
-    escapeCode[59].fn = textcolor;
-    escapeCode[59].arg = COLOUR_GREY3;
-    escapeCode[64].fn = textcolor;
-    escapeCode[64].arg = COLOUR_CYAN;
-    escapeCode[68].fn = textcolor;
-    escapeCode[68].arg = COLOUR_LIGHTBLUE;
-    escapeCode[72].fn = textcolor;
-    escapeCode[72].arg = COLOUR_LIGHTGREEN;
-    escapeCode[96].fn = blink;
-    escapeCode[96].arg = 1;
-    escapeCode[139].fn = revers;
-    escapeCode[140].fn = textcolor;
-    escapeCode[140].arg = COLOUR_PURPLE;
-    escapeCode[147].fn = underline;
-    escapeCode[147].arg = 1;
-    escapeCode[151].fn = textcolor;
-    escapeCode[151].arg = COLOUR_BROWN;
-    escapeCode[158].fn = blink;
-    escapeCode[168].fn = textcolor;
-    escapeCode[168].arg = COLOUR_WHITE;
-    escapeCode[173].fn = revers;
-    escapeCode[173].arg = 1;
-    escapeCode[191].fn = textcolor;
-    escapeCode[191].arg = COLOUR_YELLOW;
-    escapeCode[199].fn = textcolor;
-    escapeCode[199].arg = COLOUR_PINK;
-    escapeCode[206].fn = textcolor;
-    escapeCode[206].arg = COLOUR_BLACK;
-    escapeCode[215].fn = textcolor;
-    escapeCode[215].arg = COLOUR_ORANGE;
-    escapeCode[216].fn = textcolor;
-    escapeCode[216].arg = COLOUR_BLUE;
-    escapeCode[220].fn = textcolor;
-    escapeCode[220].arg = COLOUR_GREEN;
-    escapeCode[240].fn = textcolor;
-    escapeCode[240].arg = COLOUR_RED;
-    escapeCode[249].fn = movedown;
 }
 
 char petsciitoscreencode(char c)
@@ -473,6 +449,7 @@ unsigned char _cprintf(
     unsigned char printfState = PRINTF_STATE_INIT;
     unsigned char escHash = 0;
     unsigned char cch = 0;
+    unsigned char i = 0;
 
     while (*fmt) {
         switch (printfState) {
@@ -514,7 +491,12 @@ unsigned char _cprintf(
             }
 
             escHash = hash(fmt - cch, cch);
-            escapeCode[escHash].fn(escapeCode[escHash].arg);
+            for (i = 0; i < sizeof(escapeCode) / sizeof(escapeCode[0]); ++i) {
+                if (escapeCode[i].hash == escHash) {
+                    escapeCode[i].fn(escapeCode[i].arg);
+                    break;
+                }
+            }
             printfState = PRINTF_STATE_INIT;
             break;
         }
